@@ -1,0 +1,14 @@
+<resources>
+    <string name="app_name">Mapa de Blocos</string>
+    <string name="nav_mapa">Mapa</string>
+    <string name="nav_patios">Pátios</string>
+    <string name="nav_buscar">Buscar</string>
+    <string name="nav_totais">Totais</string>
+    <string name="cd_selecionar_patio">Selecionar pátio ou barracão</string>
+    <string name="cd_buscar_bloco">Buscar bloco pelo número</string>
+    <string name="cd_fechar">Fechar</string>
+    <string name="cd_adicionar_bloco">Adicionar bloco na rua</string>
+    <string name="cd_observacao">Posição possui observação</string>
+    <string name="cd_editar_patio">Renomear ou editar faixa de ruas</string>
+    <string name="cd_excluir_patio">Excluir pátio ou barracão</string>
+</resources>

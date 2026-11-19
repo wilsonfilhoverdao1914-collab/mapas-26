@@ -1,0 +1,6 @@
+{
+  "name": "Mapa de Blocos",
+  "description": "Aplicativo para mapear blocos de fardos de algodão em pátios a céu aberto e em barracões.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

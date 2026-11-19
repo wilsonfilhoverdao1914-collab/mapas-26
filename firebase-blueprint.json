@@ -1,0 +1,226 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "Perfil público sem PII do operador no pátio para exibição de nome no histórico e atribuição de edição.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "description": "UID do usuário autenticado."
+        },
+        "name": {
+          "type": "string",
+          "description": "Nome exibido no histórico e nos blocos editados (1 a 60 caracteres)."
+        },
+        "workspaceId": {
+          "type": "string",
+          "description": "Código/ID da equipe sincronizada."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timestamp da última atualização via FieldValue.serverTimestamp()."
+        }
+      },
+      "required": ["uid", "name", "workspaceId", "updatedAt"]
+    },
+    "Workspace": {
+      "title": "Workspace",
+      "description": "Equipe de 1 a 10 celulares que compartilham os mesmos pátios, blocos e histórico.",
+      "type": "object",
+      "properties": {
+        "ownerId": {
+          "type": "string",
+          "description": "UID do criador da equipe."
+        },
+        "name": {
+          "type": "string",
+          "description": "Nome da equipe ou fazenda."
+        },
+        "memberUids": {
+          "type": "array",
+          "description": "Lista limitada (máx. 10) de UIDs autorizados a sincronizar esta equipe."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timestamp de criação via FieldValue.serverTimestamp()."
+        }
+      },
+      "required": ["ownerId", "name", "memberUids", "createdAt"]
+    },
+    "Patio": {
+      "title": "Patio",
+      "description": "Pátio a céu aberto (ruas A-Z, até 50 posições/rua) ou barracão (ruas A e B, até 100 posições/rua).",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "UID do usuário criador."
+        },
+        "workspaceId": {
+          "type": "string",
+          "description": "ID da equipe proprietária do pátio."
+        },
+        "memberUids": {
+          "type": "array",
+          "description": "Lista limitada (máx. 10) de UIDs da equipe com acesso ao pátio."
+        },
+        "name": {
+          "type": "string",
+          "description": "Nome do pátio ou barracão."
+        },
+        "kind": {
+          "type": "string",
+          "enum": ["patio", "barracao"],
+          "description": "Tipo do local: 'patio' ou 'barracao'."
+        },
+        "last": {
+          "type": "string",
+          "description": "Última letra de rua (A..Z para pátio, B para barracão)."
+        },
+        "ts": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timestamp de criação via FieldValue.serverTimestamp()."
+        }
+      },
+      "required": ["userId", "workspaceId", "memberUids", "name", "kind", "last", "ts"]
+    },
+    "Slot": {
+      "title": "Slot",
+      "description": "Posição de bloco ou vaga em uma rua, com ID {patioId}_{rua}_{i_3_digitos}.",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "UID do usuário criador do registro."
+        },
+        "workspaceId": {
+          "type": "string",
+          "description": "ID da equipe proprietária."
+        },
+        "memberUids": {
+          "type": "array",
+          "description": "Lista limitada (máx. 10) de UIDs com permissão de leitura e edição."
+        },
+        "pid": {
+          "type": "string",
+          "description": "ID do pátio pai."
+        },
+        "s": {
+          "type": "string",
+          "description": "Letra da rua (A..Z)."
+        },
+        "i": {
+          "type": "integer",
+          "description": "Índice da posição a partir de 0."
+        },
+        "t": {
+          "type": "string",
+          "enum": ["B", "V"],
+          "description": "'B' para bloco ou 'V' para vaga."
+        },
+        "n": {
+          "type": "string",
+          "description": "Número do bloco (opcional quando vaga)."
+        },
+        "f": {
+          "type": "integer",
+          "description": "Quantidade de fardos."
+        },
+        "o": {
+          "type": "string",
+          "description": "Observação opcional em texto."
+        },
+        "c": {
+          "type": "integer",
+          "description": "1 se conferido, 0 caso contrário."
+        },
+        "updatedByUid": {
+          "type": "string",
+          "description": "UID de quem fez a última alteração."
+        },
+        "updatedByName": {
+          "type": "string",
+          "description": "Nome do usuário que fez a última alteração."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timestamp da última atualização via FieldValue.serverTimestamp()."
+        }
+      },
+      "required": [
+        "userId",
+        "workspaceId",
+        "memberUids",
+        "pid",
+        "s",
+        "i",
+        "t",
+        "f",
+        "c",
+        "updatedByUid",
+        "updatedByName",
+        "updatedAt"
+      ]
+    },
+    "HistoryEntry": {
+      "title": "HistoryEntry",
+      "description": "Registro imutável (somente adicionar e ler) de alterações em português.",
+      "type": "object",
+      "properties": {
+        "ts": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timestamp do evento via FieldValue.serverTimestamp()."
+        },
+        "u": {
+          "type": "string",
+          "description": "UID do usuário autor."
+        },
+        "t": {
+          "type": "string",
+          "description": "Texto curto em português descrevendo a ação."
+        },
+        "p": {
+          "type": "string",
+          "description": "Nome do pátio relacionado."
+        },
+        "workspaceId": {
+          "type": "string",
+          "description": "ID da equipe."
+        },
+        "memberUids": {
+          "type": "array",
+          "description": "Lista limitada (máx. 10) de UIDs com acesso de leitura ao histórico."
+        }
+      },
+      "required": ["ts", "u", "t", "p", "workspaceId", "memberUids"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/UserProfile" },
+      "description": "Perfil de nome e equipe de cada usuário autenticado."
+    },
+    "/workspaces/{workspaceId}": {
+      "schema": { "$ref": "#/entities/Workspace" },
+      "description": "Equipes compartilhadas entre 2 a 5 celulares."
+    },
+    "/patios/{patioId}": {
+      "schema": { "$ref": "#/entities/Patio" },
+      "description": "Coleção de pátios e barracões."
+    },
+    "/slots/{slotId}": {
+      "schema": { "$ref": "#/entities/Slot" },
+      "description": "Coleção de posições de blocos e vagas."
+    },
+    "/history/{historyId}": {
+      "schema": { "$ref": "#/entities/HistoryEntry" },
+      "description": "Coleção imutável de histórico de movimentações."
+    }
+  }
+}

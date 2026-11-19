@@ -1,0 +1,266 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Rede de segurança padrão: nega tudo por padrão
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function isValidMemberUids(list) {
+      return list is list &&
+             list.size() >= 1 &&
+             list.size() <= 10 &&
+             list[0] is string;
+    }
+
+    function isValidUser(data) {
+      return isValidId(data.uid) &&
+             data.name is string && data.name.size() >= 1 && data.name.size() <= 60 &&
+             isValidId(data.workspaceId) &&
+             data.updatedAt is timestamp && data.updatedAt <= request.time;
+    }
+
+    function isValidWorkspace(data) {
+      return isValidId(data.ownerId) &&
+             data.name is string && data.name.size() >= 1 && data.name.size() <= 60 &&
+             isValidMemberUids(data.memberUids) &&
+             data.ownerId in data.memberUids &&
+             data.createdAt is timestamp && data.createdAt <= request.time;
+    }
+
+    function isValidPatio(data) {
+      return isValidId(data.userId) &&
+             isValidId(data.workspaceId) &&
+             isValidMemberUids(data.memberUids) &&
+             data.name is string && data.name.size() >= 1 && data.name.size() <= 80 &&
+             data.kind is string && (data.kind == 'patio' || data.kind == 'barracao') &&
+             data.last is string && data.last.size() == 1 && data.last.matches('^[A-Z]$') &&
+             (data.kind != 'barracao' || data.last == 'B') &&
+             data.ts is timestamp && data.ts <= request.time;
+    }
+
+    function isValidSlot(data) {
+      return isValidId(data.userId) &&
+             isValidId(data.workspaceId) &&
+             isValidMemberUids(data.memberUids) &&
+             isValidId(data.pid) &&
+             data.s is string && data.s.size() == 1 && data.s.matches('^[A-Z]$') &&
+             data.i is int && data.i >= 0 && data.i < 100 &&
+             data.t is string && (data.t == 'B' || data.t == 'V') &&
+             (!('n' in data) || (data.n is string && data.n.size() >= 1 && data.n.size() <= 32)) &&
+             data.f is int && data.f >= 0 && data.f <= 1000000 &&
+             (!('o' in data) || (data.o is string && data.o.size() <= 500)) &&
+             data.c is int && (data.c == 0 || data.c == 1) &&
+             isValidId(data.updatedByUid) &&
+             data.updatedByName is string && data.updatedByName.size() >= 1 && data.updatedByName.size() <= 60 &&
+             data.updatedAt is timestamp && data.updatedAt <= request.time;
+    }
+
+    function isValidHistory(data) {
+      return data.ts is timestamp && data.ts <= request.time &&
+             isValidId(data.u) &&
+             data.t is string && data.t.size() >= 1 && data.t.size() <= 500 &&
+             data.p is string && data.p.size() >= 1 && data.p.size() <= 80 &&
+             isValidId(data.workspaceId) &&
+             isValidMemberUids(data.memberUids);
+    }
+
+    // Perfil sem PII: qualquer usuário autenticado da mesma equipe pode ler o nome por ID; apenas o dono grava.
+    match /users/{userId} {
+      allow get: if isSignedIn() && isValidId(userId) && (
+        request.auth.uid == userId ||
+        (
+          exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+          existing().workspaceId == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.workspaceId
+        )
+      );
+      allow list: if isSignedIn() && existing().uid == request.auth.uid;
+
+      allow create: if isSignedIn() &&
+                       isValidId(userId) &&
+                       request.auth.uid == userId &&
+                       incoming().uid == request.auth.uid &&
+                       incoming().keys().hasAll(['uid', 'name', 'workspaceId', 'updatedAt']) &&
+                       incoming().keys().hasOnly(['uid', 'name', 'workspaceId', 'updatedAt']) &&
+                       isValidUser(incoming());
+
+      allow update: if isSignedIn() &&
+                       isValidId(userId) &&
+                       request.auth.uid == userId &&
+                       incoming().uid == existing().uid &&
+                       isValidUser(incoming()) &&
+                       incoming().diff(existing()).affectedKeys().hasOnly(['name', 'workspaceId', 'updatedAt']);
+
+      allow delete: if isSignedIn() && isValidId(userId) && request.auth.uid == userId;
+    }
+
+    // Equipe compartilhada (2 a 5 celulares, limite técnico de 10 membros)
+    match /workspaces/{workspaceId} {
+      allow get: if isSignedIn() && isValidId(workspaceId);
+      allow list: if isSignedIn() && request.auth.uid in existing().memberUids;
+
+      allow create: if isSignedIn() &&
+                       isValidId(workspaceId) &&
+                       incoming().ownerId == request.auth.uid &&
+                       request.auth.uid in incoming().memberUids &&
+                       incoming().keys().hasAll(['ownerId', 'name', 'memberUids', 'createdAt']) &&
+                       incoming().keys().hasOnly(['ownerId', 'name', 'memberUids', 'createdAt']) &&
+                       isValidWorkspace(incoming());
+
+      allow update: if isSignedIn() && isValidId(workspaceId) && (
+        // Ação 1: Criador renomeia a equipe
+        (
+          existing().ownerId == request.auth.uid &&
+          incoming().ownerId == existing().ownerId &&
+          incoming().createdAt == existing().createdAt &&
+          isValidWorkspace(incoming()) &&
+          incoming().diff(existing()).affectedKeys().hasOnly(['name'])
+        ) ||
+        // Ação 2: Novo celular entra na equipe pelo código exato (somente adiciona o próprio UID)
+        (
+          incoming().ownerId == existing().ownerId &&
+          incoming().name == existing().name &&
+          incoming().createdAt == existing().createdAt &&
+          incoming().memberUids.hasAll(existing().memberUids) &&
+          incoming().memberUids.size() <= 10 &&
+          request.auth.uid in incoming().memberUids &&
+          isValidWorkspace(incoming()) &&
+          incoming().diff(existing()).affectedKeys().hasOnly(['memberUids'])
+        ) ||
+        // Ação 3: Membro sai da equipe (exceto criador)
+        (
+          request.auth.uid in existing().memberUids &&
+          existing().ownerId != request.auth.uid &&
+          incoming().ownerId == existing().ownerId &&
+          incoming().name == existing().name &&
+          incoming().createdAt == existing().createdAt &&
+          existing().memberUids.hasAll(incoming().memberUids) &&
+          !(request.auth.uid in incoming().memberUids) &&
+          isValidWorkspace(incoming()) &&
+          incoming().diff(existing()).affectedKeys().hasOnly(['memberUids'])
+        )
+      );
+
+      allow delete: if isSignedIn() && isValidId(workspaceId) && existing().ownerId == request.auth.uid;
+    }
+
+    match /patios/{patioId} {
+      allow get: if isSignedIn() && isValidId(patioId) && request.auth.uid in existing().memberUids;
+      allow list: if isSignedIn() && request.auth.uid in existing().memberUids;
+
+      allow create: if isSignedIn() &&
+                       isValidId(patioId) &&
+                       incoming().userId == request.auth.uid &&
+                       request.auth.uid in incoming().memberUids &&
+                       incoming().keys().hasAll(['userId', 'workspaceId', 'memberUids', 'name', 'kind', 'last', 'ts']) &&
+                       incoming().keys().hasOnly(['userId', 'workspaceId', 'memberUids', 'name', 'kind', 'last', 'ts']) &&
+                       isValidPatio(incoming());
+
+      allow update: if isSignedIn() &&
+                       isValidId(patioId) &&
+                       request.auth.uid in existing().memberUids &&
+                       incoming().userId == existing().userId &&
+                       incoming().workspaceId == existing().workspaceId &&
+                       incoming().kind == existing().kind &&
+                       incoming().ts == existing().ts &&
+                       request.auth.uid in incoming().memberUids &&
+                       isValidPatio(incoming()) &&
+                       incoming().diff(existing()).affectedKeys().hasOnly(['name', 'last', 'memberUids']);
+
+      allow delete: if isSignedIn() && isValidId(patioId) && request.auth.uid in existing().memberUids;
+    }
+
+    match /slots/{slotId} {
+      allow get: if isSignedIn() && isValidId(slotId) && request.auth.uid in existing().memberUids;
+      allow list: if isSignedIn() && request.auth.uid in existing().memberUids;
+
+      allow create: if isSignedIn() &&
+                       isValidId(slotId) &&
+                       incoming().userId == request.auth.uid &&
+                       incoming().updatedByUid == request.auth.uid &&
+                       request.auth.uid in incoming().memberUids &&
+                       incoming().keys().hasAll([
+                         'userId', 'workspaceId', 'memberUids', 'pid', 's', 'i', 't', 'f', 'c',
+                         'updatedByUid', 'updatedByName', 'updatedAt'
+                       ]) &&
+                       incoming().keys().hasOnly([
+                         'userId', 'workspaceId', 'memberUids', 'pid', 's', 'i', 't', 'n', 'f', 'o', 'c',
+                         'updatedByUid', 'updatedByName', 'updatedAt'
+                       ]) &&
+                       isValidSlot(incoming()) &&
+                       (
+                         (
+                           exists(/databases/$(database)/documents/patios/$(incoming().pid)) &&
+                           request.auth.uid in get(/databases/$(database)/documents/patios/$(incoming().pid)).data.memberUids
+                         ) ||
+                         (
+                           existsAfter(/databases/$(database)/documents/patios/$(incoming().pid)) &&
+                           request.auth.uid in getAfter(/databases/$(database)/documents/patios/$(incoming().pid)).data.memberUids
+                         )
+                       );
+
+      allow update: if isSignedIn() && isValidId(slotId) && request.auth.uid in existing().memberUids && (
+        // Ação 1: Membro da equipe edita posição/bloco
+        (
+          (incoming().userId == existing().userId || incoming().userId == request.auth.uid) &&
+          incoming().workspaceId == existing().workspaceId &&
+          incoming().pid == existing().pid &&
+          incoming().s == existing().s &&
+          incoming().i == existing().i &&
+          request.auth.uid in incoming().memberUids &&
+          incoming().updatedByUid == request.auth.uid &&
+          isValidSlot(incoming()) &&
+          incoming().diff(existing()).affectedKeys().hasOnly([
+            'userId', 't', 'n', 'f', 'o', 'c', 'memberUids', 'updatedByUid', 'updatedByName', 'updatedAt'
+          ])
+        ) ||
+        // Ação 2: Propagação automática de membros quando outro celular entra na equipe (preserva autor/horário da edição)
+        (
+          incoming().userId == existing().userId &&
+          incoming().workspaceId == existing().workspaceId &&
+          incoming().pid == existing().pid &&
+          incoming().s == existing().s &&
+          incoming().i == existing().i &&
+          request.auth.uid in incoming().memberUids &&
+          isValidSlot(incoming()) &&
+          incoming().diff(existing()).affectedKeys().hasOnly(['memberUids'])
+        )
+      );
+
+      allow delete: if isSignedIn() && isValidId(slotId) && request.auth.uid in existing().memberUids;
+    }
+
+    // Histórico imutável: somente criar e ler
+    match /history/{historyId} {
+      allow get: if isSignedIn() && isValidId(historyId) && request.auth.uid in existing().memberUids;
+      allow list: if isSignedIn() && request.auth.uid in existing().memberUids;
+
+      allow create: if isSignedIn() &&
+                       isValidId(historyId) &&
+                       incoming().u == request.auth.uid &&
+                       request.auth.uid in incoming().memberUids &&
+                       incoming().keys().hasAll(['ts', 'u', 't', 'p', 'workspaceId', 'memberUids']) &&
+                       incoming().keys().hasOnly(['ts', 'u', 't', 'p', 'workspaceId', 'memberUids']) &&
+                       isValidHistory(incoming());
+
+      allow update: if false;
+      allow delete: if false;
+    }
+  }
+}
